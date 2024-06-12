@@ -6,8 +6,7 @@ import loglevel from 'loglevel';
 import sharp from 'sharp';
 
 import { PrinterClient } from './lib/printer.js';
-import { SerialTransport } from './lib/transport.js';
-import { PrinterPacket } from './lib/packet.js';
+import { wait, errorLog, warnLog, infoLog } from './lib/utils.js';
 
 program
   .name('niimbot')
@@ -22,17 +21,17 @@ program
       .choices(['b1', 'b18', 'b21', 'd11', 'd110'])
       .default('b1')
   )
-  .addOption(
-    new Option('-d, --density <density>', 'print density')
-      .argParser(parseInt)
-      .default('5')
-  )
+  .option('-d, --density <density>', 'print density', '5')
   .option('--debug', 'enable debug logging')
   .option('-p, --path <path>', 'serial path of the printer')
   .action(async (args, { model, density, path, debug }) => {
+    if (debug) {
+      loglevel.setDefaultLevel('DEBUG');
+    }
+
     const imagePath = resolve(process.cwd(), args);
 
-    assert(existsSync(imagePath), 'File does not exist');
+    assert(existsSync(imagePath), `File does not exist: ${imagePath}`);
 
     const sharpImage = sharp(imagePath);
     const metadata = await sharpImage.metadata();
@@ -43,15 +42,13 @@ program
       `Image width incompatible with ${model} model`
     );
 
-    let densityOverride = density;
+    const options = {
+      density: Number(density),
+    };
 
-    if (['b18', 'd11', 'd110'].includes(model) && density > 5) {
-      loglevel.warn(`Overriding density to 3 due to model ${model} limits`);
-      densityOverride = 3;
-    }
-
-    if (debug) {
-      loglevel.setDefaultLevel('DEBUG');
+    if (['b18', 'd11', 'd110'].includes(model) && options.density > 5) {
+      warnLog(`Overriding density to 3 due to model ${model} limits`);
+      options.density = 3;
     }
 
     const client = new PrinterClient();
@@ -60,19 +57,14 @@ program
       await client.open(path);
       await wait(1_000);
 
-      loglevel.debug('Beginning print');
-
-      // await client.getPrintStatus();
-      await client.print(sharpImage, density);
+      infoLog('Starting print...');
+      await client.print(sharpImage, options);
+      infoLog('Print complete!');
     } catch (error) {
-      loglevel.error(error);
+      errorLog(error);
     }
 
     client.close();
   });
-
-function wait(time = 0) {
-  return new Promise((resolve) => setTimeout(resolve, time));
-}
 
 program.parse();
