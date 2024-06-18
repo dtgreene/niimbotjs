@@ -17,9 +17,9 @@ export type SerialDevice = {
 };
 
 export class SerialTransport {
-  _port: SerialPort | null = null;
-  _handlePortClose = () => {
-    this._port = null;
+  private port: SerialPort | null = null;
+  private handlePortClose = () => {
+    this.port = null;
   };
   open = async (path?: string) => {
     if (this.isOpen()) return;
@@ -41,29 +41,29 @@ export class SerialTransport {
         }
       };
 
-      this._port = new SerialPort(portOptions, connectCallback);
-      this._port.on('close', this._handlePortClose);
+      this.port = new SerialPort(portOptions, connectCallback);
+      this.port.on('close', this.handlePortClose);
     });
   };
   close = () => {
-    if (this._port?.isOpen) {
-      this._port.close();
-      this._port = null;
+    if (this.port?.isOpen) {
+      this.port.close();
+      this.port = null;
     }
   };
   isOpen = () => {
-    return Boolean(this._port?.isOpen);
+    return Boolean(this.port?.isOpen);
   };
   read = (size?: number) => {
-    assert(this._port?.isOpen, 'Transport not open');
-    return this._port.read(size);
+    assert(this.port?.isOpen, 'Transport not open');
+    return this.port.read(size);
   };
   write = (data: Buffer) => {
-    assert(this._port?.isOpen, 'Transport not open');
+    assert(this.port?.isOpen, 'Transport not open');
     debugLog('Writing data!', data);
-    this._port.write(data);
+    this.port.write(data);
 
-    return promisify(this._port.drain).call(this._port);
+    return promisify(this.port.drain).call(this.port);
   };
 }
 

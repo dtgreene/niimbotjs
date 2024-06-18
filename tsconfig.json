@@ -14,5 +14,5 @@
       "*": ["node_modules/*"]
     }
   },
-  "include": ["index.ts", "bin.ts"]
+  "include": ["src/index.ts", "src/bin.ts"]
 }

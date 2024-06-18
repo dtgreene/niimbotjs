@@ -46,15 +46,15 @@ export enum LabelType {
 }
 
 export class PrinterClient {
-  _packetBuffer: Buffer | null = null;
-  _serial = new SerialTransport();
+  private packetBuffer: Buffer | null = null;
+  private serial = new SerialTransport();
   open = (path?: string) => {
-    return this._serial.open(path);
+    return this.serial.open(path);
   };
   close = () => {
-    this._serial.close();
+    this.serial.close();
   };
-  _sendPacket = async (
+  private sendPacket = async (
     type: number,
     data: Buffer | number[] = [1],
     responseOffset = 1
@@ -65,8 +65,8 @@ export class PrinterClient {
     const packet = new Packet(type, buffer);
     const responseCode = type + responseOffset;
 
-    await this._serial.write(packet.toBytes());
-    const response = await this._receivePacket(responseCode);
+    await this.serial.write(packet.toBytes());
+    const response = await this.receivePacket(responseCode);
 
     if (response) {
       return response;
@@ -74,9 +74,9 @@ export class PrinterClient {
       throw new Error('Expected response was never received');
     }
   };
-  _receivePacket = async (responseCode: number) => {
+  private receivePacket = async (responseCode: number) => {
     for (let i = 0; i < PACKET_READ_COUNT; i++) {
-      const packets = this._processChunk();
+      const packets = this.processChunk();
 
       for (let j = 0; j < packets.length; j++) {
         const packet = packets[j];
@@ -105,30 +105,30 @@ export class PrinterClient {
 
     return null;
   };
-  _processChunk = () => {
+  private processChunk = () => {
     const packets: Packet[] = [];
-    const chunk = this._serial.read();
+    const chunk = this.serial.read();
 
     if (!chunk) return packets;
 
     debugLog('Received data!', chunk);
 
-    if (this._packetBuffer) {
+    if (this.packetBuffer) {
       // Add the new data to the buffer
-      this._packetBuffer = Buffer.concat([this._packetBuffer, chunk]);
+      this.packetBuffer = Buffer.concat([this.packetBuffer, chunk]);
     } else {
-      this._packetBuffer = Buffer.concat([chunk]);
+      this.packetBuffer = Buffer.concat([chunk]);
     }
 
-    while (this._packetBuffer.length > 4) {
-      const packetLength = this._packetBuffer[3] + 7;
-      if (this._packetBuffer.length >= packetLength) {
+    while (this.packetBuffer.length > 4) {
+      const packetLength = this.packetBuffer[3] + 7;
+      if (this.packetBuffer.length >= packetLength) {
         const packet = Packet.fromBytes(
-          this._packetBuffer.subarray(0, packetLength)
+          this.packetBuffer.subarray(0, packetLength)
         );
         debugLog('Received packet!', packet.type, packet.data);
         packets.push(packet);
-        this._packetBuffer = this._packetBuffer.subarray(packetLength);
+        this.packetBuffer = this.packetBuffer.subarray(packetLength);
       }
     }
 
@@ -146,7 +146,7 @@ export class PrinterClient {
 
     const imageData = await prepareImage(sharpImage);
     for (let i = 0; i < imageData.length; i++) {
-      await this._serial.write(imageData[i]);
+      await this.serial.write(imageData[i]);
     }
 
     // Wait for all data to be transmitted
@@ -168,7 +168,7 @@ export class PrinterClient {
     await this.endPrint();
   };
   getPrintStatus = async () => {
-    const { data } = await this._sendPacket(
+    const { data } = await this.sendPacket(
       RequestCode.GET_PRINT_STATUS,
       [1],
       16
@@ -181,7 +181,7 @@ export class PrinterClient {
     return { page, progress1, progress2 };
   };
   getInfo = async (key: InfoCode) => {
-    const { data } = await this._sendPacket(RequestCode.GET_INFO, [key], key);
+    const { data } = await this.sendPacket(RequestCode.GET_INFO, [key], key);
 
     switch (key) {
       case InfoCode.DEVICE_SERIAL: {
@@ -213,7 +213,7 @@ export class PrinterClient {
       2: 3,
       1: 1,
     };
-    const { data } = await this._sendPacket(
+    const { data } = await this.sendPacket(
       RequestCode.GET_HEART_BEAT,
       [variant],
       offsets[variant]
@@ -238,7 +238,7 @@ export class PrinterClient {
     return { doorOpen, hasPaper };
   };
   getRFID = async () => {
-    const { data } = await this._sendPacket(RequestCode.GET_RFID);
+    const { data } = await this.sendPacket(RequestCode.GET_RFID);
 
     if (data[0] == 0) return null;
 
@@ -273,26 +273,26 @@ export class PrinterClient {
   };
   setLabelType = (type: number) => {
     assert(type >= 1 && type <= 3);
-    return this._sendPacket(RequestCode.SET_LABEL_TYPE, [type], 16);
+    return this.sendPacket(RequestCode.SET_LABEL_TYPE, [type], 16);
   };
   setLabelDensity = (density: number) => {
     assert(
       density >= 1 && density <= 5,
       `Invalid density range; expected 1 - 5 but got ${density}`
     );
-    return this._sendPacket(RequestCode.SET_LABEL_DENSITY, [density], 16);
+    return this.sendPacket(RequestCode.SET_LABEL_DENSITY, [density], 16);
   };
   startPrint = () => {
-    return this._sendPacket(RequestCode.START_PRINT);
+    return this.sendPacket(RequestCode.START_PRINT);
   };
   endPrint = () => {
-    return this._sendPacket(RequestCode.END_PRINT);
+    return this.sendPacket(RequestCode.END_PRINT);
   };
   startPagePrint = () => {
-    return this._sendPacket(RequestCode.START_PAGE_PRINT);
+    return this.sendPacket(RequestCode.START_PAGE_PRINT);
   };
   endPagePrint = () => {
-    return this._sendPacket(RequestCode.END_PAGE_PRINT);
+    return this.sendPacket(RequestCode.END_PAGE_PRINT);
   };
   setDimensions = (width: number, height: number) => {
     // >HH
@@ -300,18 +300,18 @@ export class PrinterClient {
     data.writeUInt16BE(height, 0);
     data.writeUInt16BE(width, 2);
 
-    return this._sendPacket(RequestCode.SET_DIMENSION, data);
+    return this.sendPacket(RequestCode.SET_DIMENSION, data);
   };
   setPowerSound = (enabled: boolean) => {
     const data = [1, 2, enabled ? 1 : 0];
-    return this._sendPacket(RequestCode.SET_AUDIO_SETTING, data);
+    return this.sendPacket(RequestCode.SET_AUDIO_SETTING, data);
   };
   setBluetoothSound = (enabled: boolean) => {
     const data = [1, 1, enabled ? 1 : 0];
-    return this._sendPacket(RequestCode.SET_AUDIO_SETTING, data);
+    return this.sendPacket(RequestCode.SET_AUDIO_SETTING, data);
   };
   calibrateLabel = (label: LabelType) => {
-    return this._sendPacket(RequestCode.CALIBRATE_LABEL, [label]);
+    return this.sendPacket(RequestCode.CALIBRATE_LABEL, [label]);
   };
 }
 
