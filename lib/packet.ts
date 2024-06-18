@@ -1,11 +1,13 @@
 import assert from 'node:assert';
 
-export class PrinterPacket {
-  constructor(type, data) {
+export class Packet {
+  type: number;
+  data: Buffer;
+  constructor(type: number, data: Buffer) {
     this.type = type;
     this.data = data;
   }
-  static fromBytes = (bytes) => {
+  static fromBytes = (bytes: Buffer) => {
     const bytesLength = bytes.length;
 
     assert(bytes[0] === 0x55, 'Invalid start bytes');
@@ -20,18 +22,16 @@ export class PrinterPacket {
 
     assert(checksum === bytes[bytesLength - 3], 'Invalid checksum');
 
-    return new PrinterPacket(type, data);
+    return new Packet(type, data);
+  };
+  toBytes = () => {
+    const start = Buffer.from([0x55, 0x55, this.type, this.data.length]);
+    const end = Buffer.from([getChecksum(this.type, this.data), 0xaa, 0xaa]);
+
+    return Buffer.concat([start, this.data, end]);
   };
 }
 
-export function createPacketBytes(type, data) {
-  const start = Buffer.from([0x55, 0x55, type, data.length]);
-  const middle = data instanceof Buffer ? data : Buffer.from(data);
-  const end = Buffer.from([getChecksum(type, data), 0xaa, 0xaa]);
-
-  return Buffer.concat([start, middle, end]);
-}
-
-function getChecksum(type, data) {
+function getChecksum(type: number, data: Buffer) {
   return data.reduce((result, byte) => (result ^= byte), type ^ data.length);
 }

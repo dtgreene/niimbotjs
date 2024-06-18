@@ -9,22 +9,29 @@ const SERIAL_PRODUCT_ID = '0002';
 const SERIAL_MANUFACTURER = 'NIIMBOT';
 const SERIAL_BAUD_RATE = 115_200;
 
+export type SerialDevice = {
+  path?: string;
+  vendorId?: string;
+  productId?: string;
+  manufacturer?: string;
+};
+
 export class SerialTransport {
-  _port = null;
+  _port: SerialPort | null = null;
   _handlePortClose = () => {
     this._port = null;
   };
-  open = async (path) => {
+  open = async (path?: string) => {
     if (this.isOpen()) return;
 
     const printer = await getPrintDevice(path);
     assert(printer, `Could not find Niimbot: ${path || '(auto detected)'}`);
 
-    return new Promise((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       debugLog(`Connecting to ${printer.path}...`);
 
       const portOptions = { path: printer.path, baudRate: SERIAL_BAUD_RATE };
-      const connectCallback = (error) => {
+      const connectCallback = (error: Error | null) => {
         if (error) {
           const errorMessage = error instanceof Error ? error.message : error;
           reject(`Connection to ${printer.path} failed; ${errorMessage}`);
@@ -39,7 +46,7 @@ export class SerialTransport {
     });
   };
   close = () => {
-    if (this.isOpen()) {
+    if (this._port?.isOpen) {
       this._port.close();
       this._port = null;
     }
@@ -47,12 +54,12 @@ export class SerialTransport {
   isOpen = () => {
     return Boolean(this._port?.isOpen);
   };
-  read = (size) => {
-    assert(this.isOpen(), 'Transport not open');
+  read = (size?: number) => {
+    assert(this._port?.isOpen, 'Transport not open');
     return this._port.read(size);
   };
-  write = (data) => {
-    assert(this.isOpen(), 'Transport not open');
+  write = (data: Buffer) => {
+    assert(this._port?.isOpen, 'Transport not open');
     debugLog('Writing data!', data);
     this._port.write(data);
 
@@ -60,8 +67,8 @@ export class SerialTransport {
   };
 }
 
-async function getPrintDevice(path) {
-  const devices = await SerialPort.list();
+async function getPrintDevice(path?: string) {
+  const devices: SerialDevice[] = await SerialPort.list();
 
   if (path) {
     return devices.find((device) => device.path === path);
@@ -73,14 +80,14 @@ async function getPrintDevice(path) {
   return devices.find(matchFunc);
 }
 
-function matchWindowsPrinter(device) {
+function matchWindowsPrinter(device: SerialDevice) {
   return (
     device.vendorId === SERIAL_VENDOR_ID &&
     device.productId === SERIAL_PRODUCT_ID
   );
 }
 
-function matchDefaultPrinter(device) {
+function matchDefaultPrinter(device: SerialDevice) {
   return (
     device.manufacturer === SERIAL_MANUFACTURER &&
     device.productId === SERIAL_PRODUCT_ID

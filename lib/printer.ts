@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import sharp from 'sharp';
 
-import { PrinterPacket, createPacketBytes } from './packet.js';
-import { SerialTransport } from './transport.js';
+import { Packet } from './packet.js';
+import { SerialTransport } from './serial.js';
 import { wait, debugLog, warnLog } from './utils.js';
 
 const PACKET_TYPE_VALUE_ERROR = 219;
@@ -9,48 +10,62 @@ const PACKET_TYPE_UNIMPLEMENTED_ERROR = 0;
 const PACKET_READ_INTERVAL = 100;
 const PACKET_READ_COUNT = 10;
 
-export const InfoCode = {
-  DENSITY: 1,
-  LABEL_TYPE: 3,
-  AUTO_SHUTDOWN_TIME: 7,
-  DEVICE_TYPE: 8,
-  SOFTWARE_VERSION: 9,
-  BATTERY: 10,
-  DEVICE_SERIAL: 11,
-  HARDWARE_VERSION: 12,
-};
+export enum InfoCode {
+  DENSITY = 1,
+  LABEL_TYPE = 3,
+  AUTO_SHUTDOWN_TIME = 7,
+  DEVICE_TYPE = 8,
+  SOFTWARE_VERSION = 9,
+  BATTERY = 10,
+  DEVICE_SERIAL = 11,
+  HARDWARE_VERSION = 12,
+}
 
-export const RequestCode = {
-  START_PRINT: 1,
-  START_PAGE_PRINT: 3,
-  SET_DIMENSION: 19,
-  GET_RFID: 26,
-  SET_LABEL_DENSITY: 33,
-  SET_LABEL_TYPE: 35,
-  GET_INFO: 64,
-  IMAGE_DATA_META: 132,
-  IMAGE_DATA: 133,
-  GET_PRINT_STATUS: 163,
-  GET_HEART_BEAT: 220,
-  END_PAGE_PRINT: 227,
-  END_PRINT: 243,
-};
+export enum RequestCode {
+  START_PRINT = 1,
+  START_PAGE_PRINT = 3,
+  SET_DIMENSION = 19,
+  GET_RFID = 26,
+  SET_LABEL_DENSITY = 33,
+  SET_LABEL_TYPE = 35,
+  GET_INFO = 64,
+  SET_AUDIO_SETTING = 88,
+  IMAGE_DATA_META = 132,
+  IMAGE_DATA = 133,
+  CALIBRATE_LABEL = 142,
+  GET_PRINT_STATUS = 163,
+  GET_HEART_BEAT = 220,
+  END_PAGE_PRINT = 227,
+  END_PRINT = 243,
+}
+
+export enum LabelType {
+  GAP = 1,
+  BLACK = 2,
+  TRANSPARENT = 5,
+}
 
 export class PrinterClient {
-  _packetBuffer = null;
-  _transport = new SerialTransport();
-  open = (path) => {
-    return this._transport.open(path);
+  _packetBuffer: Buffer | null = null;
+  _serial = new SerialTransport();
+  open = (path?: string) => {
+    return this._serial.open(path);
   };
   close = () => {
-    this._transport.close();
+    this._serial.close();
   };
-  _sendPacket = async (type, data = [1], responseOffset = 1) => {
+  _sendPacket = async (
+    type: number,
+    data: Buffer | number[] = [1],
+    responseOffset = 1
+  ) => {
     debugLog('Writing packet!', type, data);
-    const bytes = createPacketBytes(type, data);
+
+    const buffer = data instanceof Buffer ? data : Buffer.from(data);
+    const packet = new Packet(type, buffer);
     const responseCode = type + responseOffset;
 
-    await this._transport.write(bytes);
+    await this._serial.write(packet.toBytes());
     const response = await this._receivePacket(responseCode);
 
     if (response) {
@@ -59,7 +74,7 @@ export class PrinterClient {
       throw new Error('Expected response was never received');
     }
   };
-  _receivePacket = async (responseCode) => {
+  _receivePacket = async (responseCode: number) => {
     for (let i = 0; i < PACKET_READ_COUNT; i++) {
       const packets = this._processChunk();
 
@@ -91,8 +106,8 @@ export class PrinterClient {
     return null;
   };
   _processChunk = () => {
-    const packets = [];
-    const chunk = this._transport.read();
+    const packets: Packet[] = [];
+    const chunk = this._serial.read();
 
     if (!chunk) return packets;
 
@@ -108,7 +123,7 @@ export class PrinterClient {
     while (this._packetBuffer.length > 4) {
       const packetLength = this._packetBuffer[3] + 7;
       if (this._packetBuffer.length >= packetLength) {
-        const packet = PrinterPacket.fromBytes(
+        const packet = Packet.fromBytes(
           this._packetBuffer.subarray(0, packetLength)
         );
         debugLog('Received packet!', packet.type, packet.data);
@@ -119,7 +134,7 @@ export class PrinterClient {
 
     return packets;
   };
-  print = async (sharpImage, { density }) => {
+  print = async (sharpImage: sharp.Sharp, { density }: { density: number }) => {
     await this.setLabelDensity(density);
     await this.setLabelType(1);
     await this.getInfo(InfoCode.DEVICE_TYPE);
@@ -131,7 +146,7 @@ export class PrinterClient {
 
     const imageData = await prepareImage(sharpImage);
     for (let i = 0; i < imageData.length; i++) {
-      await this._transport.write(imageData[i]);
+      await this._serial.write(imageData[i]);
     }
 
     // Wait for all data to be transmitted
@@ -165,7 +180,7 @@ export class PrinterClient {
 
     return { page, progress1, progress2 };
   };
-  getInfo = async (key) => {
+  getInfo = async (key: InfoCode) => {
     const { data } = await this._sendPacket(RequestCode.GET_INFO, [key], key);
 
     switch (key) {
@@ -187,7 +202,7 @@ export class PrinterClient {
       }
     }
   };
-  getHeartbeat = async (variant) => {
+  getHeartBeat = async (variant: 4 | 3 | 2 | 1 = 4) => {
     assert(
       variant >= 1 && variant <= 4,
       `Invalid variant range; expected 1 - 4 but got ${variant}`
@@ -204,8 +219,8 @@ export class PrinterClient {
       offsets[variant]
     );
 
-    let doorOpen = null;
-    let hasPaper = null;
+    let doorOpen: boolean | null = null;
+    let hasPaper: boolean | null = null;
 
     switch (variant) {
       case 1: {
@@ -256,62 +271,52 @@ export class PrinterClient {
       type,
     };
   };
-  setLabelType = async (type) => {
+  setLabelType = (type: number) => {
     assert(type >= 1 && type <= 3);
-    const result = await this._sendPacket(
-      RequestCode.SET_LABEL_TYPE,
-      [type],
-      16
-    );
-
-    return Boolean(result.data[0]);
+    return this._sendPacket(RequestCode.SET_LABEL_TYPE, [type], 16);
   };
-  setLabelDensity = async (density) => {
+  setLabelDensity = (density: number) => {
     assert(
       density >= 1 && density <= 5,
       `Invalid density range; expected 1 - 5 but got ${density}`
     );
-    const result = await this._sendPacket(
-      RequestCode.SET_LABEL_DENSITY,
-      [density],
-      16
-    );
-
-    return Boolean(result.data[0]);
+    return this._sendPacket(RequestCode.SET_LABEL_DENSITY, [density], 16);
   };
-  startPrint = async () => {
-    const result = await this._sendPacket(RequestCode.START_PRINT);
-
-    return Boolean(result.data[0]);
+  startPrint = () => {
+    return this._sendPacket(RequestCode.START_PRINT);
   };
-  endPrint = async () => {
-    const result = await this._sendPacket(RequestCode.END_PRINT);
-
-    return Boolean(result.data[0]);
+  endPrint = () => {
+    return this._sendPacket(RequestCode.END_PRINT);
   };
-  startPagePrint = async () => {
-    const result = await this._sendPacket(RequestCode.START_PAGE_PRINT);
-
-    return Boolean(result.data[0]);
+  startPagePrint = () => {
+    return this._sendPacket(RequestCode.START_PAGE_PRINT);
   };
-  endPagePrint = async () => {
-    const result = await this._sendPacket(RequestCode.END_PAGE_PRINT);
-
-    return Boolean(result.data[0]);
+  endPagePrint = () => {
+    return this._sendPacket(RequestCode.END_PAGE_PRINT);
   };
-  setDimensions = async (width, height) => {
+  setDimensions = (width: number, height: number) => {
     // >HH
     const data = Buffer.alloc(4);
     data.writeUInt16BE(height, 0);
     data.writeUInt16BE(width, 2);
-    const result = await this._sendPacket(RequestCode.SET_DIMENSION, data);
 
-    return Boolean(result.data[0]);
+    return this._sendPacket(RequestCode.SET_DIMENSION, data);
+  };
+  setPowerSound = (enabled: boolean) => {
+    const data = [1, 2, enabled ? 1 : 0];
+    return this._sendPacket(RequestCode.SET_AUDIO_SETTING, data);
+  };
+  setBluetoothSound = (enabled: boolean) => {
+    const data = [1, 1, enabled ? 1 : 0];
+    return this._sendPacket(RequestCode.SET_AUDIO_SETTING, data);
+  };
+  calibrateLabel = (label: LabelType) => {
+    return this._sendPacket(RequestCode.CALIBRATE_LABEL, [label]);
   };
 }
 
-export async function prepareImage(sharpImage) {
-  const imageData = [];
+export async function prepareImage(sharpImage: sharp.Sharp) {
+  const imageData: Buffer[] = [];
   const { data, info } = await sharpImage
     .greyscale()
     .negate()
@@ -333,7 +338,7 @@ export async function prepareImage(sharpImage) {
     const pixels = pixelArray.subarray(colIndex, colIndex + width);
 
     let bits = '';
-    let bytes = [];
+    let bytes: number[] = [];
     let left = 0;
     let right = 0;
 
@@ -367,12 +372,12 @@ export async function prepareImage(sharpImage) {
     // How many times to repeat this row
     header.writeUInt16BE(1, 4);
 
-    imageData.push(
-      createPacketBytes(
-        RequestCode.IMAGE_DATA,
-        Buffer.concat([header, lineData])
-      )
+    const packet = new Packet(
+      RequestCode.IMAGE_DATA,
+      Buffer.concat([header, lineData])
     );
+
+    imageData.push(packet.toBytes());
   }
 
   return imageData;

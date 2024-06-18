@@ -40,7 +40,7 @@ program
     const maxWidth = ['b1', 'b18', 'b21'].includes(model) ? 384 : 96;
 
     assert(
-      metadata.width <= maxWidth,
+      metadata.width ?? 0 <= maxWidth,
       `Image width incompatible with ${model} model`
     );
 
