@@ -12,11 +12,7 @@ import { wait, errorLog, warnLog, infoLog } from './lib/utils.js';
 
 program
   .name('niimbot')
-  .description('Printer client for Niimbot printers over USB');
-
-program
-  .command('print')
-  .description('Prints an image')
+  .description('Printer client for Niimbot printers over USB')
   .argument('<image>', 'path of the image to print')
   .addOption(
     new Option('-m, --model <model>', 'niimbot model')
