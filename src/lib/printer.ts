@@ -149,8 +149,9 @@ export class PrinterClient {
       await this.serial.write(imageData[i]);
     }
 
-    // Wait for all data to be transmitted
     await this.endPagePrint();
+
+    let printCompleted = false;
 
     // Check the status until completed
     for (let i = 0; i < 5; i++) {
@@ -159,10 +160,17 @@ export class PrinterClient {
       debugLog('Print progress:', status);
 
       if (status.progress1 === 100 && status.progress2 === 100) {
+        printCompleted = true;
         break;
       }
 
       await wait(500);
+    }
+
+    if (!printCompleted) {
+      warnLog(
+        'Indicated progress did not reach 100%.  Printing may have failed.'
+      );
     }
 
     await this.endPrint();
