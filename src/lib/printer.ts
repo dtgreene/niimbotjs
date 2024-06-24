@@ -137,7 +137,6 @@ export class PrinterClient {
   print = async (sharpImage: sharp.Sharp, { density }: { density: number }) => {
     await this.setLabelDensity(density);
     await this.setLabelType(1);
-    await this.getInfo(InfoCode.DEVICE_TYPE);
     await this.startPrint();
     await this.startPagePrint();
 
