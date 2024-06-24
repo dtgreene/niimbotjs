@@ -1,10 +1,6 @@
 ## NiimbotJS
 
-A Node.js library for printing with the Niimbot series of label printers.
-
-Currently, only printing over USB is supported.
-
-This project is largely a port of [kjy00302/niimprint](https://github.com/kjy00302/niimprint) and [AndBondStyle/niimprint](https://github.com/AndBondStyle/niimprint) so big thanks to them.
+A Node.js library for printing with Niimbot label printers.  This project is largely a port of [kjy00302/niimprint](https://github.com/kjy00302/niimprint) and [AndBondStyle/niimprint](https://github.com/AndBondStyle/niimprint) so big thanks to them.  Currently, only printing over USB is supported.
 
 ## Usage
 
@@ -58,6 +54,8 @@ try {
 
 client.close();
 ```
+
+Check out the [Wiki](https://github.com/dtgreene/niimbotjs/wiki) for documentation.
 
 ## Development
 
